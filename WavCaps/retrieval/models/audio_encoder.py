@@ -47,7 +47,8 @@ class AudioEncoder(nn.Module):
                 config=config,
             )
             if config["audio_encoder_args"]["pretrained"]:
-                audio_ckpt = torch.load("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT.ckpt", map_location="cpu")["state_dict"]
+                # audio_ckpt = torch.load("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT.ckpt", map_location="cpu")["state_dict"]
+                audio_ckpt = torch.load("/home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/WavCaps/retrieval/pretrained_models/HTSAT.ckpt", map_location="cpu")["state_dict"]
                 for key in list(audio_ckpt.keys()):
                     if key.startswith('sed_model') and ('spectrogram_extractor' not in key
                                                         and 'logmel_extractor' not in key):

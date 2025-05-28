@@ -7,6 +7,9 @@ import sys
 sys.path.append("..")
 from tqdm import tqdm
 import torch
+import os, sys
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(base_dir)
 from c3d.c3d import C3D
 import torchvision
 import csv
@@ -23,6 +26,9 @@ import glob
 import soundfile as sf
 import librosa
 import torch.nn.functional as F
+
+
+
 from WavCaps.retrieval.models.ase_model import ASE
 import argparse
 from src.args import str_to_bool
@@ -54,8 +60,10 @@ args = parser.parse_args()
 
 
 
-device = 'cuda:4'
+# device = 'cuda:4'
+device = 'cuda:0'
 model, preprocess = clip.load("ViT-B/32", device=device)
+# 作者自己对特征提取模型进行了微调，但论文中并没有对其进行微调，可以忽略
 if args.finetuned_model == True:
     model_path = '/home/aoq234/dev/ClipClap/logs/clip_finetuning/second_try_Aug25_19-53-14_475888_callisto/checkpoints/clip_finetuned.pt'
     save_path = '/home/aoq234/akata-shared/aoq234/mnt/ucf_features_finetuned_clip_wavcaps'
@@ -63,7 +71,8 @@ if args.finetuned_model == True:
     model.load_state_dict(checkpoint['model_state_dict'])
 else:
     model_path = "ViT-B/32"
-    save_path = '/home/aoq234/akata-shared/aoq234/mnt/ucf_features_original_clip_wavcaps'
+    # save_path = '/home/aoq234/akata-shared/aoq234/mnt/ucf_features_original_clip_wavcaps'
+    save_path = '/home/wh/clip_original/ucf_features_original_clip_wavcaps'
 
 
 model = model.to(device)
@@ -86,7 +95,8 @@ print("Vocab size:", vocab_size)
 output_list_no_average=[]
 
 
-path=Path("/home/aoq234/akata-shared/datasets/UCF101/UCF-101") # path to search for videos
+# path=Path("/home/aoq234/akata-shared/datasets/UCF101/UCF-101") # path to search for videos
+path=Path("/home/wh/work/dataset/UCF101/UCF-101") # path to search for videos
 
 dict_csv={}
 list_classes=[]
@@ -106,7 +116,8 @@ for index,val in enumerate(sorted(list_classes)):
 
 
 
-with open("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/settings/inference.yaml", "r") as f:
+# with open("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/settings/inference.yaml", "r") as f:
+with open("/home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/WavCaps/retrieval/settings/inference.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 
@@ -118,7 +129,8 @@ if args.finetuned_model == True:
     cp_path = '/home/aoq234/dev/ClipClap/logs/wavcaps_finetuning/first_try_Aug29_07-25-05_613403_callisto/checkpoints/WavCaps_finetuned.pt'
     state_dict_key = 'model_state_dict'
 else:
-    cp_path = '/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT_BERT_zero_shot.pt'
+    # cp_path = '/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT_BERT_zero_shot.pt'
+    cp_path = '/home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/WavCaps/retrieval/pretrained_models/HTSAT_BERT_zero_shot.pt'
     state_dict_key = 'model'
 
 cp = torch.load(cp_path)
@@ -142,8 +154,10 @@ for f in tqdm(path.glob("**/*.avi")):
     try:
         # audio
         mp4_version = AudioSegment.from_file(str(f), "avi")
-        mp4_version.export("/home/aoq234/akata-shared/aoq234/mnt/ucf_dummy_tmp.wav", format="wav")
-        audio = read_prepare_audio("/home/aoq234/akata-shared/aoq234/mnt/ucf_dummy_tmp.wav", device)
+        # mp4_version.export("/home/aoq234/akata-shared/aoq234/mnt/ucf_dummy_tmp.wav", format="wav")
+        mp4_version.export("/home/wh/clip_original/ucf_dummy_tmp.wav", format="wav")
+        # audio = read_prepare_audio("/home/aoq234/akata-shared/aoq234/mnt/ucf_dummy_tmp.wav", device)
+        audio = read_prepare_audio("/home/wh/clip_original/ucf_dummy_tmp.wav", device)
 
         with torch.no_grad():
             audio_emb = wavcaps_model.encode_audio(audio).squeeze()

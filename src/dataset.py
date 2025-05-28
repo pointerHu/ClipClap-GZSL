@@ -960,7 +960,8 @@ class UCFDataset(data.Dataset):
     def all_class_names(self):
         # return get_class_names(self.root / "class-split/all_class.txt")
         # return get_class_names(self.root / "class-split" / "all_class.txt")
-        return get_class_names(Path(self.root) / "class-split" / "all_class.txt")
+        # return get_class_names(Path(self.root) / "class-split" / "all_class.txt")
+        return get_class_names(Path(self.root).joinpath("class-split", "all_class.txt"))
 
     @property
     def seen_class_names(self):

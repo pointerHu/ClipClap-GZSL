@@ -137,6 +137,7 @@ save_pickle_files(args.dataset_name, False, args.path_splitted_dataset, args.pat
 
 # call for UCF
 # python splitting_scripts_cls/create_pkl_files_cls.py --dataset_name UCF --path_original_dataset /home/aoq234/akata-shared/aoq234/mnt/ucf_features_original_clip_wavcaps --path_splitted_dataset /home/aoq234/akata-shared/aoq234/avzsl/clip_original
+# python splitting_scripts_cls/create_pkl_files_cls.py --dataset_name UCF --path_original_dataset /home/wh/clip_original/ucf_features_original_clip_wavcaps --path_splitted_dataset /home/wh/avzsl/clip_original
 
 
 
