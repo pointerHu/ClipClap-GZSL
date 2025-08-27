@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 # user defined
 from src.optimizer import SAM
-
+from einops.layers.torch import Rearrange
 torch.set_printoptions(threshold=10_000)
 def disable_running_stats(model):
     def _disable(module):
@@ -68,45 +68,143 @@ class EmbeddingNet(nn.Module):
 
 
 
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, x, **kwargs):
+        return self.fn(self.norm(x), **kwargs)
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
 
 
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+        return x
 
 
+class AutoFusion(nn.Module):
+    """docstring for AutoFusion"""
+    def __init__(self, dim, hidden_dim):
+        super(AutoFusion, self).__init__()
+
+        self.fuse_in = nn.Sequential(
+            nn.Linear(dim, hidden_dim//2),
+            nn.Tanh(),
+            nn.Linear(hidden_dim//2, dim),
+            nn.ReLU()
+            )
+        self.fuse_out = nn.Sequential(
+            nn.Linear(dim, hidden_dim//2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim//2, dim)
+            )
+        self.criterion = nn.MSELoss()
+
+    def forward(self, z):
+        compressed_z = self.fuse_in(z)
+        loss = self.criterion(self.fuse_out(compressed_z), z)
+        return compressed_z,loss
+
+class CosineSimilarityLoss(nn.Module):
+    def __init__(self):
+        super(CosineSimilarityLoss, self).__init__()
+
+    def forward(self, input_vectors, target_vectors):
+        # 计算余弦相似度
+        cosine_similarity = F.cosine_similarity(input_vectors, target_vectors)
+
+        # 构建损失函数，使余弦相似度接近1
+        loss = 1 - cosine_similarity
+
+        return loss.mean()
+
+class MLP_block(nn.Module):
+    def __init__(self, input_size, hidden_size, dropout=0.5):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, input_size),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        x = self.net(x)
+        return x
 
 
+class MLP_Communicator(nn.Module):
+    def __init__(self, token, channel, hidden_size, depth=1):
+        super(MLP_Communicator, self).__init__()
+        self.depth = depth
+        self.token_mixer = nn.Sequential(
+            Rearrange('b n d -> b d n'),
+            MLP_block(input_size=channel, hidden_size=hidden_size),
+            Rearrange('b n d -> b d n')
+        )
+        self.channel_mixer = nn.Sequential(
+            MLP_block(input_size=token, hidden_size=hidden_size)
+        )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def forward(self, x):
+        for _ in range(self.depth):
+            x = x + self.token_mixer(x)
+            x = x + self.channel_mixer(x)
+        return x
 
 
 class ClipClap_model(nn.Module):
@@ -217,6 +315,18 @@ class ClipClap_model(nn.Module):
             dropout=self.drop_proj_w,
             use_bn=params_model['embeddings_batch_norm']
         )
+        self.cross_attention = Transformer(512, 6, 8, 64, 512, dropout=0.2)
+        self.pos_emb1D = torch.nn.Parameter(torch.randn(1, 512))
+        self.fu = AutoFusion(
+            dim=512,
+            hidden_dim=512,
+        )
+        self.mlp = MLP_Communicator(
+            token=512,  # token 的大小
+            channel=1,  # 通道的大小
+            hidden_size=64,  # 隐藏层的大小
+            depth=1  # 深度
+        )
 
 
 
@@ -282,6 +392,18 @@ class ClipClap_model(nn.Module):
 
 
         o = self.O_enc(model_input)
+        # o = o.unsqueeze(1)
+        # #print(o.shape)
+        # o = self.mlp(o).squeeze(1)
+
+        m, l = self.fu(o)
+        m = m + self.pos_emb1D[0, :]
+        m = m.unsqueeze(1)
+        #print(m.shape)
+        o = self.cross_attention(m).squeeze(1)
+        o = o.unsqueeze(1)
+        # print(o.shape)s
+        o = self.mlp(o).squeeze(1)
 
         w = self.W_enc(w)
 
@@ -431,7 +553,16 @@ class ClipClap_model(nn.Module):
 
 
         o = self.O_enc(model_input)
-
+        # o = o.unsqueeze(1)
+        # #print(o.shape)s
+        # o = self.mlp(o).squeeze(1)
+        m, l = self.fu(o)
+        m = m + self.pos_emb1D[0, :]
+        m = m.unsqueeze(1)
+        o = self.cross_attention(m).squeeze(1)
+        o = o.unsqueeze(1)
+        # print(o.shape)s
+        o = self.mlp(o).squeeze(1)
         w = self.W_enc(w)
 
 

@@ -1,4 +1,14 @@
-
+# UCF
+python3 main.py --cfg config/clipclap.yaml
+                        --root_dir /home/wh/work/data/clipclap/UCF
+                        --log_dir /home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/logs/ClipClap_UCF
+                        --dataset_name UCF
+                        --epochs 20
+                        --lr 0.00007
+                        --use_wavcaps_embeddings True
+                        --modality both
+                        --word_embeddings both
+                        --run all
 
 
 

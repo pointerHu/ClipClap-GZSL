@@ -10,11 +10,18 @@ import matplotlib.pyplot as plt
 # from prompt_toolkit import prompt
 import pandas as pd
 from tqdm import tqdm
+
+# 解决pycharm有时索引不到文件
+import os, sys
+# sys.path.append(os.getcwd())
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(base_dir)
+
 from WavCaps.retrieval.models.ase_model import ASE
 from ruamel import yaml
 import argparse
 from src.args import str_to_bool
-
+from datetime import datetime
 
 def zeroshot_classifier(classnames, templates, device):
     with torch.no_grad():
@@ -30,11 +37,47 @@ def zeroshot_classifier(classnames, templates, device):
         # zeroshot_weights = torch.stack(zeroshot_weights, dim=1).to(device)
     return zeroshot_weights
 
+# 从CSV文件中加载UCF类别描述
+df2 = pd.read_csv('../avgzsl_benchmark_non_averaged_datasets/VGGSound/class-split/VGGSound.csv')
+descriptions = {
+    "description_1": df2['description_1'].tolist(),
+    "description_2": df2['description_2'].tolist(),
+    "description_3": df2['description_3'].tolist(),
+}
+# 将类别名称、模板和描述组合在一起时，生成的文本太长，超过了CLIP模型的上下文长度限制（77个token）
+def zeroshot_classifier_with_descriptions(classnames, templates, descriptions, device):
+    with torch.no_grad():
+        zeroshot_weights = {}
+
+        for idx, classname in enumerate(tqdm(classnames)):
+            all_embeddings = []
+
+            # 处理每个模板
+            for template in templates:
+                base_text = template.format(classname)
+                # 方案2: 如果需要使用所有描述，可以分别处理每个描述
+                for desc_key in ["description_1", "description_2", "description_3"]:
+                    desc = descriptions[desc_key][idx]
+                    text = f"{base_text} {desc}"
+                    tokens = clip.tokenize(text).to(device)
+                    embedding = model.encode_text(tokens)
+                    embedding /= embedding.norm(dim=-1, keepdim=True)
+                    all_embeddings.append(embedding)
+
+            # 合并所有嵌入
+            all_embeddings = torch.cat(all_embeddings, dim=0)
+            class_embedding = all_embeddings.mean(dim=0)
+            class_embedding /= class_embedding.norm()
+
+            zeroshot_weights[classname] = class_embedding.cpu().detach().numpy().astype(np.float32)
+
+    return zeroshot_weights
 
 
-
-df = pd.read_csv('/home/aoq234/akata-shared/aoq234/avzsl/clip_original/avgzsl_benchmark_datasets/VGGSound/class-split/vggsound_w2v_class_names.csv')
-vggsound_classes = df['manual'].tolist()
+# df = pd.read_csv('../avgzsl_benchmark_non_averaged_datasets/VGGSound/class-split/vggsound_w2v_class_names.csv')
+# df = pd.read_csv('../avgzsl_benchmark_non_averaged_datasets/VGGSound/class-split/vggsound_w2v_class_names.csv')
+# vggsound_classes = df['manual'].tolist()
+vggsound_classes = df2['name'].tolist()
 
 
 # vggsound_templates = [
@@ -102,7 +145,8 @@ vggsound_templates = [
 
 
 
-device = 'cuda:3'
+# device = 'cuda:3'
+device = 'cuda:0'
 model, preprocess = clip.load("ViT-B/32", device=device)
 
 
@@ -122,15 +166,23 @@ print("Vocab size:", vocab_size)
 model_version = 'clip_original'
 
 
-zeroshot_weights = zeroshot_classifier(vggsound_classes, vggsound_templates, device)
+# zeroshot_weights = zeroshot_classifier(vggsound_classes, vggsound_templates, device)
+zeroshot_weights = zeroshot_classifier_with_descriptions(vggsound_classes, vggsound_templates, descriptions, device)
+
 print(zeroshot_weights.keys())
 
-data_root_path = f'/home/aoq234/akata-shared/aoq234/avzsl/{model_version}/avgzsl_benchmark_datasets/VGGSound/features/cls_features_non_averaged'
+data_root_path = f'/home/wh/{model_version}/avgzsl_benchmark_datasets/VGGSound/features/cls_features_non_averaged'
 data_path = os.path.join(data_root_path, 'text')
 
 if not(os.path.exists(data_path)):
     os.makedirs(data_path)
-filename = os.path.join(data_path, 'word_embeddings_vggsound_normed.npy')
+# filename = os.path.join(data_path, 'word_embeddings_vggsound_normed.npy')
+
+word_embedding = 'word_embeddings_vggsound_description_normed'
+file_extension = '.npy'
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+new_filename = f"{word_embedding}_{current_time}{file_extension}"
+filename = os.path.join(data_path, new_filename)
 
 np.save(filename, zeroshot_weights)
 
@@ -160,7 +212,24 @@ def wavcaps_zeroshot_classifier(classnames, templates, device):
             zeroshot_weights[classname] = class_embedding.cpu().detach().numpy().astype(np.float32)
     return zeroshot_weights
 
-
+def wavcaps_zeroshot_classifier_with_descriptions(classnames, templates, descriptions, device):
+    with torch.no_grad():
+        zeroshot_weights = {}
+        for idx, classname in enumerate(tqdm(classnames)):
+            texts = []
+            for template in templates:
+                base_text = template.format(classname)
+                for desc_key in ["description_1", "description_2", "description_3"]:
+                    desc = descriptions[desc_key][idx]
+                    text = f"{base_text} {desc}"
+                    embedding = wavcaps_model.encode_text([text])
+                    embedding /= embedding.norm(dim=-1, keepdim=True)
+                    texts.append(embedding)
+            class_embeddings = torch.cat(texts, dim=0)
+            class_embedding = class_embeddings.mean(dim=0)
+            class_embedding /= class_embedding.norm()
+            zeroshot_weights[classname] = class_embedding.cpu().detach().numpy().astype(np.float32)
+    return zeroshot_weights
 
 
 
@@ -211,22 +280,32 @@ vggsound_audio_templates = [
 ]
 
 
-with open("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/settings/inference.yaml", "r") as f:
+# with open("/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/settings/inference.yaml", "r") as f:
+with open("../WavCaps/retrieval/settings/inference.yaml", "r") as f:
     config = yaml.safe_load(f)
-device = 'cuda:3'
+# device = 'cuda:3'
+device = 'cuda:0'
 wavcaps_model = ASE(config)
 wavcaps_model.to(device)
 
 
 
-cp_path = '/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT_BERT_zero_shot.pt'
+# cp_path = '/home/aoq234/dev/CLIP-GZSL/WavCaps/retrieval/pretrained_models/audio_encoders/HTSAT_BERT_zero_shot.pt'
+cp_path = '/home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/WavCaps/retrieval/pretrained_models/HTSAT_BERT_zero_shot.pt'
 state_dict_key = 'model'
 cp = torch.load(cp_path)
 wavcaps_model.load_state_dict(cp[state_dict_key])
 wavcaps_model.eval()
 print("Model weights loaded from {}".format(cp_path))
 
-wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier(vggsound_classes, vggsound_audio_templates, device)
+df3 = pd.read_csv('/home/wh/PycharmProjects/KDA/avgzsl_benchmark_datasets/VGGSound/class-split/VGGSound.csv')
+descriptions = {
+    "description_1": df3['description_1'].tolist(),
+    "description_2": df3['description_2'].tolist(),
+    "description_3": df3['description_3'].tolist(),
+}
+# wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier(vggsound_classes, vggsound_audio_templates, device)
+wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier_with_descriptions(vggsound_classes, vggsound_audio_templates, descriptions, device)
 
 
 print(wavecaps_zeroshot_weights.keys())
@@ -234,8 +313,12 @@ data_path = os.path.join(data_root_path, 'text')
 
 if not(os.path.exists(data_path)):
     os.makedirs(data_path)
-filename = os.path.join(data_path, 'wavcaps_word_embeddings_vggsound_normed.npy')
+# filename = os.path.join(data_path, 'wavcaps_word_embeddings_vggsound_normed.npy')
 
+wavcaps_word_embedding = 'wavcaps_word_embeddings_vggsound_description_normed'
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+new_filename = f"{wavcaps_word_embedding}_{current_time}{file_extension}"
+filename = os.path.join(data_path, new_filename)
 
 np.save(filename, wavecaps_zeroshot_weights)
 

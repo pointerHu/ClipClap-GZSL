@@ -22,7 +22,7 @@ from datetime import datetime
 
 
 # 从CSV文件中加载UCF类别描述
-df2 = pd.read_csv('/home/wh/PycharmProjects/KDA/avgzsl_benchmark_datasets/UCF/class-split/UCF.csv')
+df2 = pd.read_csv('../avgzsl_benchmark_non_averaged_datasets/UCF/class-split/UCF.csv')
 
 # 加载动作名称的最大补充描述
 # ucf_classes = df2['name'].tolist()
@@ -121,7 +121,7 @@ def zeroshot_classifier_with_descriptions2(classnames, templates, descriptions, 
                     text = f"{base_text} {desc}"
                     # if len(text.split()) > 50:
                     #     text = " ".join(text.split()[:50])
-                    tokens = clip.tokenize(text, truncate=True).to(device)
+                    tokens = clip.tokenize(text).to(device)
                     embedding = model.encode_text(tokens)
                     embedding /= embedding.norm(dim=-1, keepdim=True)
                     all_embeddings.append(embedding)
@@ -153,14 +153,14 @@ def generate_zeroshot_weights(classnames):
     act_3 = df2["description_3"].tolist()
 
     # 确保索引在有效范围内
-    valid_ids = [i for i in attributes_ids if i < len(act_name)]
+    # valid_ids = [i for i in attributes_ids if i < len(act_name)]
 
-    for class_id in tqdm(valid_ids):
+    for class_id, classname in enumerate(tqdm(classnames)):
         class_name = act_name[class_id]
 
         # 获取该类别的所有描述
         descriptions = [
-            act_name[class_id],  # 类名本身
+            # act_name[class_id],  # 类名本身
             act_1[class_id],  # 描述1
             act_2[class_id],  # 描述2
             act_3[class_id]  # 描述3
@@ -176,7 +176,7 @@ def generate_zeroshot_weights(classnames):
                     continue
 
                 # 使用CLIP tokenizer和模型处理文本
-                inputs = clip.tokenize([desc], padding=True, return_tensors="pt")
+                inputs = clip.tokenize([desc], return_tensors="pt")
                 inputs = {key: value.to(device) for key, value in inputs.items()}
 
                 # 获取文本嵌入
@@ -200,18 +200,6 @@ def generate_zeroshot_weights(classnames):
 
     return zeroshot_weights
 
-# files = pd.read_csv("./avgzsl_benchmark_datasets/UCF/class-split/UCF.csv")  # 路径错误
-# act_name = files["name"].tolist()
-# act_1 = files["description_1"].tolist()
-# act_2 = files["description_2"].tolist()
-# act_3 = files["description_3"].tolist()
-
-# self.act_name = [f'A sound event video of "{action}".' for action in self.act_name]
-# act_name = [f'{action}' for action in act_name]
-
-
-
-
 
 def zeroshot_classifier_descriptions_non_templates(classnames, templates, descriptions, device):
     with torch.no_grad():
@@ -232,7 +220,7 @@ def zeroshot_classifier_descriptions_non_templates(classnames, templates, descri
     return zeroshot_weights
 
 # df = pd.read_csv('/home/aoq234/thesis/ClipClap-GZSL/avgzsl_benchmark_non_averaged_datasets/UCF/class-split/ucf_clip_class_names.csv')
-df = pd.read_csv('/home/wh/.ssh/ClipClap-GZSL/ClipClap-GZSL/avgzsl_benchmark_non_averaged_datasets/UCF/class-split/ucf_clip_class_names.csv')
+df = pd.read_csv('../avgzsl_benchmark_non_averaged_datasets/UCF/class-split/ucf_clip_class_names.csv')
 ucf_classes = df['clip_class_name'].tolist()
 
 ucf_templates = [
@@ -314,7 +302,7 @@ print("Vocab size:", vocab_size)
 # zeroshot_weights = zeroshot_classifier_with_descriptions(ucf_classes, ucf_templates, descriptions, device)
 zeroshot_weights = zeroshot_classifier_with_descriptions2(ucf_classes, ucf_templates, descriptions, device)
 # zeroshot_weights = zeroshot_classifier_descriptions_non_templates(ucf_classes, ucf_templates, descriptions, device)
-zeroshot_weights = generate_zeroshot_weights(ucf_classes)
+# zeroshot_weights = generate_zeroshot_weights(ucf_classes)
 
 print(zeroshot_weights.keys())
 # data_root_path = '/home/aoq234/akata-shared/aoq234/avzsl/clip_original/avgzsl_benchmark_datasets/UCF/features/cls_features_non_averaged'
@@ -479,8 +467,8 @@ wavcaps_model.eval()
 print("Model weights loaded from {}".format(cp_path))
 
 # wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier(ucf_classes, ucf_audio_templates, device)
-wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier_with_descriptions(ucf_classes, ucf_audio_templates,descriptions, device)
-# wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier_with_descriptions2(ucf_classes, ucf_audio_templates,descriptions, device)
+# wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier_with_descriptions(ucf_classes, ucf_audio_templates,descriptions, device)
+wavecaps_zeroshot_weights = wavcaps_zeroshot_classifier_with_descriptions2(ucf_classes, ucf_audio_templates,descriptions, device)
 
 
 print(wavecaps_zeroshot_weights.keys())

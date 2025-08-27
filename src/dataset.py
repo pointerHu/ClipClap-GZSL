@@ -110,11 +110,20 @@ class VGGSoundDataset(data.Dataset):
 
     @property
     def class_to_idx(self):
-        return {_class: i for i, _class in enumerate(sorted(self.all_class_names))}
-
+        # 检查 self.all_class_names 是否已经被计算过
+        if not hasattr(self, '_all_class_names_cache'):
+            self._all_class_names_cache = self.all_class_names
+        # return {_class: i for i, _class in enumerate(sorted(self.all_class_names))}
+        return {_class: i for i, _class in enumerate(sorted(self._all_class_names_cache))}
     @property
     def all_class_names(self):
-        return get_class_names(self.root / "class-split/all_class.txt")
+        # return get_class_names(self.root / "class-split/all_class.txt")
+
+        if isinstance(self.root, Path):
+            path = self.root.joinpath("class-split", "all_class.txt")
+        else:
+            path = Path(self.root).joinpath("class-split", "all_class.txt")
+        return get_class_names(path)
 
     @property
     def seen_class_names(self):
@@ -961,7 +970,13 @@ class UCFDataset(data.Dataset):
         # return get_class_names(self.root / "class-split/all_class.txt")
         # return get_class_names(self.root / "class-split" / "all_class.txt")
         # return get_class_names(Path(self.root) / "class-split" / "all_class.txt")
-        return get_class_names(Path(self.root).joinpath("class-split", "all_class.txt"))
+        # return get_class_names(Path(self.root).joinpath("class-split", "all_class.txt"))
+
+        if isinstance(self.root, Path):
+            path = self.root.joinpath("class-split", "all_class.txt")
+        else:
+            path = Path(self.root).joinpath("class-split", "all_class.txt")
+        return get_class_names(path)
 
     @property
     def seen_class_names(self):
@@ -1278,7 +1293,14 @@ class ActivityNetDataset(data.Dataset):
 
     @property
     def all_class_names(self):
-        return get_class_names(self.root / "class-split/all_class.txt")
+        # return get_class_names(self.root / "class-split/all_class.txt")
+        return get_class_names(Path(self.root).joinpath("class-split", "all_class.txt"))
+
+        # if isinstance(self.root, Path):
+        #     path = self.root.joinpath("class-split", "all_class.txt")
+        # else:
+        #     path = Path(self.root).joinpath("class-split", "all_class.txt")
+        # return get_class_names(path)
 
     @property
     def seen_class_names(self):
